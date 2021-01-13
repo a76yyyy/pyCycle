@@ -4,15 +4,15 @@ from openmdao.api import Problem, Group
 
 from openmdao.utils.assert_utils import assert_near_equal
 
-from pycycle.cea.chem_eq import ChemEq
-from pycycle.cea import species_data
+from pycycle.thermo.cea.chem_eq import ChemEq
+from pycycle.thermo.cea import species_data
 from pycycle import constants
 
 
 class ChemEqTestCase(unittest.TestCase):
 
     def setUp(self):
-        self.thermo = species_data.Thermo(species_data.co2_co_o2, init_reacts=constants.CO2_CO_O2_MIX)
+        self.thermo = species_data.Properties(species_data.co2_co_o2, init_elements=constants.CO2_CO_O2_ELEMENTS)
         p = self.p = Problem(model=Group())
         p.model.suppress_solver_output = True
         p.model.set_input_defaults('P', 1.034210, units="bar")

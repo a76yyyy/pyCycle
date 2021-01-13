@@ -4,10 +4,9 @@ import numpy as np
 
 import openmdao.api as om 
 
-from pycycle.cea import species_data
-from pycycle.cea.set_static import SetStatic
-from pycycle.cea.set_total import SetTotal
-from pycycle.constants import AIR_MIX
+from pycycle.thermo.cea import species_data
+from pycycle.thermo.thermo import Thermo
+from pycycle.constants import AIR_ELEMENTS
 from pycycle.flow_in import FlowIn
 from pycycle.passthrough import PassThrough
 
@@ -150,7 +149,7 @@ class Duct(om.Group):
     def initialize(self):
         self.options.declare('thermo_data', default=species_data.janaf,
                               desc='thermodynamic data set', recordable=False)
-        self.options.declare('elements', default=AIR_MIX,
+        self.options.declare('elements', default=AIR_ELEMENTS,
                               desc='set of elements present in the flow')
         self.options.declare('statics', default=True,
                               desc='If True, calculate static properties.')
@@ -173,13 +172,10 @@ class Duct(om.Group):
         design = self.options['design']
         expMN = self.options['expMN']
 
-        gas_thermo = species_data.Thermo(thermo_data, init_reacts=elements)
-        gas_prods = gas_thermo.products
-        num_prod = gas_thermo.num_prod
-        num_element = gas_thermo.num_element
+        num_element = len(elements)
 
         # Create inlet flowstation
-        flow_in = FlowIn(fl_name='Fl_I', num_prods=num_prod, num_elements=num_element)
+        flow_in = FlowIn(fl_name='Fl_I')
         self.add_subsystem('flow_in', flow_in, promotes=['Fl_I:tot:*', 'Fl_I:stat:*'])
 
         if expMN > 1e-10: # Calcluate pressure losses as function of Mach number
@@ -201,9 +197,11 @@ class Duct(om.Group):
         self.add_subsystem('q_calc', qCalc(), promotes_inputs=prom_in)
 
         # Total Calc
-        real_flow = SetTotal(thermo_data=thermo_data, mode='h',
-                             init_reacts=elements, fl_name="Fl_O:tot")
-        prom_in = [('b0', 'Fl_I:tot:b0')]
+        real_flow = Thermo(mode='total_hP', fl_name='Fl_O:tot', 
+                           method='CEA', 
+                           thermo_kwargs={'elements':elements, 
+                                          'spec':thermo_data})
+        prom_in = [('composition', 'Fl_I:tot:composition')]
         self.add_subsystem('real_flow', real_flow, promotes_inputs=prom_in,
                            promotes_outputs=['Fl_O:*'])
         self.connect("q_calc.ht_out", "real_flow.h")
@@ -212,8 +210,11 @@ class Duct(om.Group):
         if statics:
             if design:
             #   Calculate static properties
-                out_stat = SetStatic(mode="MN", thermo_data=thermo_data, init_reacts=elements, fl_name="Fl_O:stat")
-                prom_in = [('b0', 'Fl_I:tot:b0'),
+                out_stat = Thermo(mode='static_MN', fl_name='Fl_O:stat', 
+                                  method='CEA', 
+                                  thermo_kwargs={'elements':elements, 
+                                                 'spec':thermo_data})
+                prom_in = [('composition', 'Fl_I:tot:composition'),
                            ('W', 'Fl_I:stat:W'),
                            'MN']
                 prom_out = ['Fl_O:stat:*']
@@ -227,8 +228,11 @@ class Duct(om.Group):
 
             else:
                 # Calculate static properties
-                out_stat = SetStatic(mode="area", thermo_data=thermo_data, init_reacts=elements, fl_name="Fl_O:stat")
-                prom_in = [('b0', 'Fl_I:tot:b0'),
+                out_stat = Thermo(mode='static_A', fl_name='Fl_O:stat', 
+                                  method='CEA', 
+                                  thermo_kwargs={'elements':elements, 
+                                                 'spec':thermo_data})
+                prom_in = [('composition', 'Fl_I:tot:composition'),
                            ('W', 'Fl_I:stat:W'),
                            'area']
                 prom_out = ['Fl_O:stat:*']
@@ -243,12 +247,6 @@ class Duct(om.Group):
             self.add_subsystem('W_passthru', PassThrough('Fl_I:stat:W', 'Fl_O:stat:W', 1.0, units= "lbm/s"),
                                promotes=['*'])
 
-        self.add_subsystem('FAR_passthru', PassThrough('Fl_I:FAR', 'Fl_O:FAR', 0.0), promotes=['*'])
-
-        # if not design: 
-        #     self.set_input_defaults('area', val=1, units='in**2')
-
-        self.set_input_defaults('Fl_I:tot:b0', gas_thermo.b0)
 
 
 if __name__ == "__main__":

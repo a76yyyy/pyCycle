@@ -14,12 +14,12 @@ class Propulsor(pyc.Cycle):
         design = self.options['design']
 
         self.pyc_add_element('fc', pyc.FlightConditions(thermo_data=thermo_spec,
-                                                  elements=pyc.AIR_MIX))
+                                                  elements=pyc.AIR_ELEMENTS))
 
-        self.pyc_add_element('inlet', pyc.Inlet(design=design, thermo_data=thermo_spec, elements=pyc.AIR_MIX))
-        self.pyc_add_element('fan', pyc.Compressor(thermo_data=thermo_spec, elements=pyc.AIR_MIX,
+        self.pyc_add_element('inlet', pyc.Inlet(design=design, thermo_data=thermo_spec, elements=pyc.AIR_ELEMENTS))
+        self.pyc_add_element('fan', pyc.Compressor(thermo_data=thermo_spec, elements=pyc.AIR_ELEMENTS,
                                                  design=design, map_data=pyc.FanMap, map_extrap=True))
-        self.pyc_add_element('nozz', pyc.Nozzle(thermo_data=thermo_spec, elements=pyc.AIR_MIX))
+        self.pyc_add_element('nozz', pyc.Nozzle(thermo_data=thermo_spec, elements=pyc.AIR_ELEMENTS))
         self.pyc_add_element('perf', pyc.Performance(num_nozzles=1, num_burners=0))
 
 
@@ -95,6 +95,12 @@ def viewer(prob, pt):
 
     pyc.print_nozzle(prob, [f'{pt}.nozz'])
 
+def map_plots(prob, pt):
+    comp_names = ['fan']
+    comp_full_names = [f'{pt}.{c}' for c in comp_names]
+    pyc.plot_compressor_maps(prob, comp_full_names)
+
+
 
 class MPpropulsor(pyc.MPCycle):
 
@@ -168,5 +174,8 @@ if __name__ == "__main__":
     for pt in ['design']+mp_propulsor.od_pts:
         print('\n', '#'*10, pt, '#'*10)
         viewer(prob, pt)
+
+    map_plots(prob,'design')
+
 
     print("Run time", run_time)

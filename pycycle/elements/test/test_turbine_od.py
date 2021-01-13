@@ -5,11 +5,11 @@ import os
 from openmdao.api import Problem, Group
 from openmdao.utils.assert_utils import assert_near_equal
 
-from pycycle.cea.species_data import janaf, Thermo
+from pycycle.mp_cycle import Cycle
+from pycycle.thermo.cea.species_data import janaf
 from pycycle.elements.turbine import Turbine
 from pycycle.elements.combustor import Combustor
-from pycycle.connect_flow import connect_flow
-from pycycle.constants import AIR_FUEL_MIX, AIR_MIX
+from pycycle.constants import AIR_FUEL_ELEMENTS, AIR_ELEMENTS
 from pycycle.elements.flow_start import FlowStart
 from pycycle.maps.lpt2269 import LPT2269
 
@@ -76,33 +76,32 @@ class TurbineODTestCase(unittest.TestCase):
 
     def setUp(self):
 
-        thermo = Thermo(janaf, AIR_FUEL_MIX)
-
         self.prob = Problem()
+        cycle = self.prob.model = Cycle()
 
-        self.prob.model.add_subsystem('flow_start', FlowStart(thermo_data=janaf, elements=AIR_MIX))
-        self.prob.model.add_subsystem('burner', Combustor(thermo_data=janaf,
-                                                          inflow_elements=AIR_MIX,
-                                                          air_fuel_elements=AIR_FUEL_MIX,
+        cycle.add_subsystem('flow_start', FlowStart(thermo_data=janaf, elements=AIR_ELEMENTS))
+        cycle.add_subsystem('burner', Combustor(thermo_data=janaf,
+                                                          inflow_elements=AIR_ELEMENTS,
+                                                          air_fuel_elements=AIR_FUEL_ELEMENTS,
                                                           fuel_type="JP-7"))
-        self.prob.model.add_subsystem(
+        cycle.add_subsystem(
             'turbine',
             Turbine(
                 map_data=LPT2269,
                 design=False,
-                elements=AIR_FUEL_MIX))
+                elements=AIR_FUEL_ELEMENTS))
 
 
-        self.prob.model.set_input_defaults('burner.MN', .01, units=None)
-        self.prob.model.set_input_defaults('burner.Fl_I:FAR', .01, units=None)
-        self.prob.model.set_input_defaults('turbine.Nmech', 1000., units='rpm'),
-        self.prob.model.set_input_defaults('flow_start.P', 17., units='psi'),
-        self.prob.model.set_input_defaults('flow_start.T', 500.0, units='degR'),
-        self.prob.model.set_input_defaults('flow_start.W', 0., units='lbm/s'),
-        self.prob.model.set_input_defaults('turbine.area', 150., units='inch**2')
+        cycle.set_input_defaults('burner.MN', .01, units=None)
+        cycle.set_input_defaults('burner.Fl_I:FAR', .01, units=None)
+        cycle.set_input_defaults('turbine.Nmech', 1000., units='rpm'),
+        cycle.set_input_defaults('flow_start.P', 17., units='psi'),
+        cycle.set_input_defaults('flow_start.T', 500.0, units='degR'),
+        cycle.set_input_defaults('flow_start.W', 0., units='lbm/s'),
+        cycle.set_input_defaults('turbine.area', 150., units='inch**2')
 
-        connect_flow(self.prob.model, "flow_start.Fl_O", "burner.Fl_I")
-        connect_flow(self.prob.model, "burner.Fl_O", "turbine.Fl_I")
+        cycle.pyc_connect_flow("flow_start.Fl_O", "burner.Fl_I")
+        cycle.pyc_connect_flow("burner.Fl_O", "turbine.Fl_I")
 
         self.prob.set_solver_print(level=-1)
         self.prob.setup(check=False)

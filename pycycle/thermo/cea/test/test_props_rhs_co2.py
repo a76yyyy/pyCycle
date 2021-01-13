@@ -6,9 +6,9 @@ from openmdao.api import Problem, Group
 
 from openmdao.utils.assert_utils import assert_near_equal
 
-from pycycle.cea.props_rhs import PropsRHS
-from pycycle.cea.props_calcs import PropsCalcs
-from pycycle.cea import species_data
+from pycycle.thermo.cea.props_rhs import PropsRHS
+from pycycle.thermo.cea.props_calcs import PropsCalcs
+from pycycle.thermo.cea import species_data
 from pycycle import constants
 
 
@@ -16,21 +16,21 @@ class PropsRHSTestCase(unittest.TestCase):
 
     def setUp(self):
 
-        self.thermo = species_data.Thermo(species_data.co2_co_o2, init_reacts=constants.CO2_CO_O2_MIX)
+        self.thermo = species_data.Properties(species_data.co2_co_o2, init_elements=constants.CO2_CO_O2_ELEMENTS)
 
         p = self.prob = Problem()
         p.model = Group()
         p.model.suppress_solver_output = True
 
         p.model.add_subsystem('props_rhs', PropsRHS(thermo=self.thermo),
-                              promotes=['T', 'n', 'b0', 'rhs_T', 'rhs_P', 'lhs_TP', 'n_moles'])
+                              promotes=['T', 'n', 'composition', 'rhs_T', 'rhs_P', 'lhs_TP', 'n_moles'])
         p.model.set_input_defaults('T', 4000., units='degK')
 
         n = np.array([0.02040741, 0.0023147, 0.0102037])
         p.model.set_input_defaults('n', n)
 
         b = np.array([0.02272211, 0.04544422])
-        p.model.set_input_defaults('b0', b)
+        p.model.set_input_defaults('composition', b)
         p.model.set_input_defaults('n_moles', 0.03292581)
 
         p.setup(check=False)
@@ -56,7 +56,7 @@ class PropsCalcsTestCase(unittest.TestCase):
 
     def setUp(self):
 
-        self.thermo = species_data.Thermo(species_data.co2_co_o2, init_reacts=constants.CO2_CO_O2_MIX)
+        self.thermo = species_data.Properties(species_data.co2_co_o2, init_elements=constants.CO2_CO_O2_ELEMENTS)
 
         p = self.prob = Problem()
         p.model = Group()
