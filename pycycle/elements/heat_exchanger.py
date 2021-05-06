@@ -9,6 +9,34 @@ from pycycle.flow_in import FlowIn
 from pycycle.passthrough import PassThrough
 
 
+class Areas(om.ExplicitComponent):
+    """
+    Compute the area of the heat exchanger
+    """
+    def setup(self):
+        self.add_input('length_hex', units='ft', desc='length of the heat exchanger')
+        self.add_input('radius_hex', units='ft', desc='radius of a heat exchanger tube')
+        self.add_input('number_hex', desc='number of heat exchanger tubes')
+
+        self.add_output('area_hex_external', units='ft**2', desc='external area of the heat exchanger')
+        self.add_output('area_hex_internal', units='ft**2', desc='internal area of the heat exchanger')
+
+        self.declare_partials('area_hex_external', '*')
+        self.declare_partials('area_hex_internal', '*')
+        self.set_check_partial_options('*', method='cs')
+
+    def compute(self, inputs, outputs):
+        outputs['area_hex_external'] = 2*np.pi*inputs['radius_hex']*inputs['length_hex']*inputs['number_hex']
+        outputs['area_hex_internal'] = np.pi*inputs['radius_hex']**2*inputs['number_hex']
+
+    def compute_partials(self, inputs, J):
+        J['area_hex_external', 'length_hex'] = 2*np.pi*inputs['radius_hex']*inputs['number_hex']
+        J['area_hex_external', 'radius_hex'] = 2*np.pi*inputs['length_hex']*inputs['number_hex']
+        J['area_hex_external', 'number_hex'] = 2*np.pi*inputs['radius_hex']*inputs['length_hex']
+        J['area_hex_internal', 'radius_hex'] = 2*np.pi*inputs['radius_hex']*inputs['number_hex']
+        J['area_hex_internal', 'number_hex'] = np.pi*inputs['radius_hex']**2
+
+
 class Coeff(om.ExplicitComponent):
     """
     Compute the coefficients of the fluid and coolant
@@ -64,8 +92,8 @@ class NTUCalc(om.ExplicitComponent):
     Compute the NTU
     """
     def setup(self):
-        self.add_input('area', units='inch**2', desc='area of the heat exchanger')
-        self.add_input('h_overall', units='Btu/(s*degR*inch**2)', desc='overall heat transfer coefficient')
+        self.add_input('area_hex', units='ft**2', desc='area of the heat exchanger')
+        self.add_input('h_overall', units='Btu/(s*degR*ft**2)', desc='overall heat transfer coefficient')
         self.add_input('C_min', units='Btu/(s*degR)', desc='minimum heat coefficient')
 
         self.add_output('NTU', desc='NTU result')
@@ -74,12 +102,12 @@ class NTUCalc(om.ExplicitComponent):
         self.set_check_partial_options('*', method='cs')
 
     def compute(self, inputs, outputs):
-        outputs['NTU'] = inputs['area']*inputs['h_overall']/inputs['C_min']
+        outputs['NTU'] = inputs['area_hex']*inputs['h_overall']/inputs['C_min']
 
     def compute_partials(self, inputs, J):
-        J['NTU', 'area'] = inputs['h_overall']/inputs['C_min']
-        J['NTU', 'h_overall'] = inputs['area']/inputs['C_min']
-        J['NTU', 'C_min'] = -inputs['area']*inputs['h_overall']/inputs['C_min']**2
+        J['NTU', 'area_hex'] = inputs['h_overall']/inputs['C_min']
+        J['NTU', 'h_overall'] = inputs['area_hex']/inputs['C_min']
+        J['NTU', 'C_min'] = -inputs['area_hex']*inputs['h_overall']/inputs['C_min']**2
 
 
 class EffCalc(om.ExplicitComponent):
@@ -127,7 +155,7 @@ class Qactual(om.ExplicitComponent):
         self.add_input('T_fluid_in', units='degR', desc='temperature of incoming fluid')
         self.add_input('T_cool_in', units='degR', desc='temperature of incoming coolant')
 
-        self.add_output('q_actual', units='Btu/lbm', desc='actual heat transfer per mass flow rate')
+        self.add_output('q_actual', units='Btu/s', desc='actual heat transfer per mass flow rate')
 
         self.declare_partials('q_actual', '*')
         self.set_check_partial_options('*', method='cs')
@@ -149,7 +177,9 @@ class TempChanges(om.ExplicitComponent):
     def setup(self):
         self.add_input('ht_in_fluid', units='Btu/lbm', desc='fluid incoming total enthalpy')
         self.add_input('ht_in_cool', units='Btu/lbm', desc='coolant incoming total enthalpy')
-        self.add_input('q_actual', units='Btu/lbm', desc='heat ratio per mass flow rate')
+        self.add_input('q_actual', units='Btu/s', desc='heat ratio per mass flow rate')
+        self.add_input('W_fluid', units='lbm/s', desc='fluid mass flow')
+        self.add_input('W_cool', units='lbm/s', desc='coolant mass flow')
 
         self.add_output('ht_out_fluid', units='Btu/lbm', desc='fluid outgoing total enthalpy')
         self.add_output('ht_out_cool', units='Btu/lbm', desc='coolant outgoing total enthalpy')
@@ -159,43 +189,78 @@ class TempChanges(om.ExplicitComponent):
         self.set_check_partial_options('*', method='cs')
 
     def compute(self, inputs, outputs):
-        outputs['ht_out_fluid'] = inputs['ht_in_fluid']-inputs['q_actual']
-        outputs['ht_out_cool'] = inputs['ht_in_cool']+inputs['q_actual']
+        outputs['ht_out_fluid'] = inputs['ht_in_fluid']-inputs['q_actual']/inputs['W_fluid']
+        outputs['ht_out_cool'] = inputs['ht_in_cool']+inputs['q_actual']/inputs['W_cool']
+        # print(outputs['ht_out_fluid'], inputs['ht_in_fluid'], inputs['q_actual'])
+        # print(outputs['ht_out_cool'], inputs['ht_in_cool'], inputs['q_actual'])
 
     def compute_partials(self, inputs, J):
         J['ht_out_fluid', 'ht_in_fluid'] = 1.
-        J['ht_out_fluid', 'q_actual'] = -1.
+        J['ht_out_fluid', 'q_actual'] = -1./inputs['W_fluid']
+        J['ht_out_fluid', 'W_fluid'] = inputs['q_actual']/inputs['W_fluid']**2
         J['ht_out_cool', 'ht_in_cool'] = 1.
-        J['ht_out_cool', 'q_actual'] = 1.
+        J['ht_out_cool', 'q_actual'] = 1./inputs['W_cool']
+        J['ht_out_cool', 'W_cool'] = -inputs['q_actual']/inputs['W_cool']**2
+
+
+class PressureLossFlow(om.ExplicitComponent):
+    """
+    Calculates pressure loss of the 2 flows
+    Equations taken from Compact Heat Exchangers (Kays & London, 2018)
+    """
+    def setup(self):
+        self.add_input('W', units='lbm/s', desc='mass flow')
+        self.add_input('rho_in', units='lbm/ft**3', desc='inlet density')
+        self.add_input('ff', desc='friction factor')
+        self.add_input('area_hex', units='ft**2', desc='area of the heat exchanger')
+        self.add_input('area_flow', units='ft**2', desc='minimum flow cross sectional area')
+
+        self.add_output('p_loss', units='lbf/ft**2', desc='pressure loss of flow')
+
+        self.declare_partials('p_loss', '*')
+        self.set_check_partial_options('*', method='cs')
+
+    def compute(self, inputs, outputs):
+        outputs['p_loss'] = inputs['W']**2*inputs['ff']*inputs['area_hex']/(2*inputs['rho_in']*inputs['area_flow']**3)
+
+    def compute_partials(self, inputs, J):
+        J['p_loss', 'W'] = 2*inputs['W']*inputs['ff']*inputs['area_hex']/(2*inputs['rho_in']*inputs['area_flow']**3)
+        J['p_loss', 'rho_in'] = -inputs['W']**2*inputs['ff']*inputs['area_hex']/(2*inputs['rho_in']**2*inputs['area_flow']**3)
+        J['p_loss', 'ff'] = inputs['W']**2*inputs['area_hex']/(2*inputs['rho_in']*inputs['area_flow']**3)
+        J['p_loss', 'area_hex'] = inputs['W']**2*inputs['ff']/(2*inputs['rho_in']*inputs['area_flow']**3)
+        J['p_loss', 'area_flow'] = -3*inputs['W']**2*inputs['ff']*inputs['area_hex']/(2*inputs['rho_in']*inputs['area_flow']**4)
 
 
 class PressureLoss(om.ExplicitComponent):
     """
     Calculates pressure loss across the heat exchanger.
     """
-
     def setup(self):
-        self.add_input('dPqP', val=0.05,
+        self.add_input('dPqP_fluid', units='lbf/ft**2', val=0.03,
                        desc='pressure differential as a fraction of incoming pressure')
-        self.add_input('Pt_in_fluid', units='lbf/inch**2', desc='fluid inlet total pressure')
-        self.add_input('Pt_in_cool', units='lbf/inch**2', desc='coolant inlet total pressure')
+        self.add_input('dPqP_cool', units='lbf/ft**2', val=0.12,
+                       desc='pressure differential as a fraction of incoming pressure')
+        self.add_input('Pt_in_fluid', units='lbf/ft**2', desc='fluid inlet total pressure')
+        self.add_input('Pt_in_cool', units='lbf/ft**2', desc='coolant inlet total pressure')
 
-        self.add_output('Pt_out_fluid', units='lbf/inch**2', desc='fluid exit total pressure', lower=1e-3)
-        self.add_output('Pt_out_cool', units='lbf/inch**2', desc='coolant exit total pressure', lower=1e-3)
+        self.add_output('Pt_out_fluid', units='lbf/ft**2', desc='fluid exit total pressure', lower=1e-3)
+        self.add_output('Pt_out_cool', units='lbf/ft**2', desc='coolant exit total pressure', lower=1e-3)
 
         self.declare_partials('Pt_out_fluid', '*')
         self.declare_partials('Pt_out_cool', '*')
         self.set_check_partial_options('*', method='cs')
 
     def compute(self, inputs, outputs):
-        outputs['Pt_out_fluid'] = inputs['Pt_in_fluid']*(1.0 - inputs['dPqP'])
-        outputs['Pt_out_cool'] = inputs['Pt_in_cool']*(1.0 - inputs['dPqP'])
+        outputs['Pt_out_fluid'] = inputs['Pt_in_fluid'] - inputs['dPqP_fluid']
+        outputs['Pt_out_cool'] = inputs['Pt_in_cool'] - inputs['dPqP_cool']
+        # print(outputs['Pt_out_fluid'], inputs['Pt_in_fluid'], inputs['dPqP_fluid'])
+        # print(outputs['Pt_out_cool'], inputs['Pt_in_cool'], inputs['dPqP_cool'])
 
     def compute_partials(self, inputs, J):
-        J['Pt_out_fluid', 'dPqP'] = -inputs['Pt_in_fluid']
-        J['Pt_out_fluid', 'Pt_in_fluid'] = 1.0 - inputs['dPqP']
-        J['Pt_out_cool', 'dPqP'] = -inputs['Pt_in_cool']
-        J['Pt_out_cool', 'Pt_in_cool'] = 1.0 - inputs['dPqP']
+        J['Pt_out_fluid', 'dPqP_fluid'] = -1.0
+        J['Pt_out_fluid', 'Pt_in_fluid'] = 1.0
+        J['Pt_out_cool', 'dPqP_cool'] = -1.0
+        J['Pt_out_cool', 'Pt_in_cool'] = 1.0
 
 
 class HeatExchanger(om.Group):
@@ -253,7 +318,6 @@ class HeatExchanger(om.Group):
                              desc='If True, a newton solver is used inside the mixer to converge the impulse balance')
 
     def setup(self):
-
         thermo_data = self.options['thermo_data']
         fluid_elements = self.options['Fl_I1_elements']
         coolant_elements = self.options['Fl_I2_elements']
@@ -266,12 +330,16 @@ class HeatExchanger(om.Group):
         in_flow = FlowIn(fl_name='Fl_I2')
         self.add_subsystem('in_flow_cool', in_flow, promotes=['Fl_I2:tot:*', 'Fl_I2:stat:*'])  # 2 = coolant
 
+        # Calculate the heat exchanger area
+        prom_in = ['length_hex', 'radius_hex', 'number_hex']
+        self.add_subsystem('areas', Areas(), promotes_inputs=prom_in)
+
         # Calculate the different coefficients
         prom_in = [('W_fluid', 'Fl_I1:stat:W'), ('Cp_fluid', 'Fl_I1:stat:Cp'), ('W_cool', 'Fl_I2:stat:W'), ('Cp_cool', 'Fl_I2:stat:Cp')]
         self.add_subsystem('coeff', Coeff(), promotes_inputs=prom_in)
 
         # Calculate the NTU
-        prom_in = ['area', 'h_overall', 'C_min']
+        prom_in = [('area_hex', 'area_hex_external'), 'h_overall', 'C_min']
         self.add_subsystem('ntu', NTUCalc(), promotes_inputs=prom_in)
 
         # Calculate the efficiency
@@ -283,19 +351,31 @@ class HeatExchanger(om.Group):
         self.add_subsystem('q_calc', Qactual(), promotes_inputs=prom_in)
 
         # Calculate fluid and coolant temperature changes
-        prom_in = [('ht_in_fluid', 'Fl_I1:tot:h'), ('ht_in_cool', 'Fl_I2:tot:h'), 'q_actual']
+        prom_in = [('ht_in_fluid', 'Fl_I1:tot:h'), ('ht_in_cool', 'Fl_I2:tot:h'), 'q_actual', ('W_fluid', 'Fl_I1:stat:W'), ('W_cool', 'Fl_I2:stat:W')]
         self.add_subsystem('temp_changes', TempChanges(), promotes_inputs=prom_in)
 
+        # Calculate the core pressure drop
+        prom_in = [('W', 'Fl_I1:stat:W'), ('rho_in', 'Fl_I1:stat:rho'), ('ff', 'ff_core'), ('area_hex', 'area_hex_internal'), ('area_flow', 'Fl_I1:stat:area')]
+        self.add_subsystem('p_loss_core', PressureLossFlow(), promotes_inputs=prom_in)
+
+        # Calculate the bypass pressure drop
+        prom_in = [('W', 'Fl_I2:stat:W'), ('rho_in', 'Fl_I2:stat:rho'), ('ff', 'ff_bypass'), ('area_hex', 'area_hex_external'), ('area_flow', 'Fl_I2:stat:area')]
+        self.add_subsystem('p_loss_bypass', PressureLossFlow(), promotes_inputs=prom_in)
+
         # Calculate fluid and coolant pressure changes
-        prom_in = [('Pt_in_fluid', 'Fl_I1:tot:P'), ('Pt_in_cool', 'Fl_I2:tot:P'), 'dPqP']
+        prom_in = [('Pt_in_fluid', 'Fl_I1:tot:P'), ('Pt_in_cool', 'Fl_I2:tot:P'), 'dPqP_fluid', 'dPqP_cool']
         self.add_subsystem('p_loss', PressureLoss(), promotes_inputs=prom_in)
 
         # Connect all calculations
+        self.connect('areas.area_hex_external', 'area_hex_external')
+        self.connect('areas.area_hex_internal', 'area_hex_internal')
         self.connect('coeff.C_min', 'C_min')
         self.connect('coeff.C_r', 'C_r')
         self.connect('ntu.NTU', 'NTU')
         self.connect('eff_calc.eff', 'eff')
         self.connect('q_calc.q_actual', 'q_actual')
+        self.connect('p_loss_core.p_loss', 'dPqP_fluid')
+        self.connect('p_loss_bypass.p_loss', 'dPqP_cool')
 
         # Total Calc
         real_flow_fluid = Thermo(mode='total_hP', fl_name='Fl_O1:tot',
