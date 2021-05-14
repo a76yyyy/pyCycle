@@ -191,8 +191,6 @@ class TempChanges(om.ExplicitComponent):
     def compute(self, inputs, outputs):
         outputs['ht_out_fluid'] = inputs['ht_in_fluid']-inputs['q_actual']/inputs['W_fluid']
         outputs['ht_out_cool'] = inputs['ht_in_cool']+inputs['q_actual']/inputs['W_cool']
-        # print(outputs['ht_out_fluid'], inputs['ht_in_fluid'], inputs['q_actual'])
-        # print(outputs['ht_out_cool'], inputs['ht_in_cool'], inputs['q_actual'])
 
     def compute_partials(self, inputs, J):
         J['ht_out_fluid', 'ht_in_fluid'] = 1.
@@ -253,8 +251,6 @@ class PressureLoss(om.ExplicitComponent):
     def compute(self, inputs, outputs):
         outputs['Pt_out_fluid'] = inputs['Pt_in_fluid'] - inputs['dPqP_fluid']
         outputs['Pt_out_cool'] = inputs['Pt_in_cool'] - inputs['dPqP_cool']
-        # print(outputs['Pt_out_fluid'], inputs['Pt_in_fluid'], inputs['dPqP_fluid'])
-        # print(outputs['Pt_out_cool'], inputs['Pt_in_cool'], inputs['dPqP_cool'])
 
     def compute_partials(self, inputs, J):
         J['Pt_out_fluid', 'dPqP_fluid'] = -1.0
