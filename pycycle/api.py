@@ -22,6 +22,7 @@ from pycycle.elements.mixer import Mixer
 from pycycle.elements.bleed_out import BleedOut
 from pycycle.elements.cooling import TurbineCooling, CombineCooling
 from pycycle.elements.gearbox import Gearbox
+from pycycle.elements.heat_exchanger import HeatExchanger
 
 
 from pycycle.maps.axi5 import AXI5
