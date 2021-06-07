@@ -197,10 +197,10 @@ class ChemEq(om.ImplicitComponent):
             self.mu = H0_T - S0_T + np.log(n) + np.log(P) - np.log(n_moles)
             np.seterr(all='warn')
         except:
-            print('ChemEQ error in: ', self.pathname)
-            print('n', n)
-            print('P', P)
-            print('n_moles', n_moles)
+            # print('ChemEQ error in: ', self.pathname)
+            # print('n', n)
+            # print('P', P)
+            # print('n_moles', n_moles)
             self.mu = H0_T - S0_T + np.log(n) + np.log(1e-5) - np.log(n_moles)
             np.seterr(all='warn')
 
